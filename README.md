@@ -27,6 +27,7 @@ Optionally, you can set the `AWS_S3_REGION` variable if you don't use us-east-1.
 ## Travis configuration
 
 Add these to your Travis configuration:
+
 ```
 bundler_args: --without development --path=~/.bundle
 before_install:
