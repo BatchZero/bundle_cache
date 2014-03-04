@@ -15,7 +15,7 @@ module BundleCache
       :secret_access_key => ENV["AWS_S3_SECRET"],
       :region => ENV["AWS_S3_REGION"] || "us-east-1"
     })
-    bucket = s3.buckets.find(bucket_name)
+    bucket = s3.buckets.first
 
     gem_archive = bucket.objects.find(file_name)
     hash_object = bucket.objects.find(digest_filename)
