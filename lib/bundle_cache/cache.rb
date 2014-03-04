@@ -1,14 +1,8 @@
 require "digest"
-require "aws-sdk"
+require "s3"
 
 module BundleCache
   def self.cache
-    # Setup AWS credentials
-    AWS.config({
-      :access_key_id => ENV["AWS_S3_KEY"],
-      :secret_access_key => ENV["AWS_S3_SECRET"],
-      :region => ENV["AWS_S3_REGION"] || "us-east-1"
-    })
 
     acl_to_use = ENV["KEEP_BUNDLE_PRIVATE"] ? :private : :public_read
     bundle_dir = ENV["BUNDLE_DIR"] || "~/.bundle"
@@ -39,7 +33,7 @@ module BundleCache
       end
 
       puts "=> Preparing bundle archive"
-      `tar -C #{File.dirname(bundle_dir)} -cjf #{file_path} #{File.basename(bundle_dir)} && split -b 5m -a 3 #{file_path} #{file_path}.`
+      `tar -C #{File.dirname(bundle_dir)} -cjf #{file_path} #{File.basename(bundle_dir)}`
 
       if 1 == $?.exitstatus
         puts "=> Archive failed. Please make sure '--path=#{bundle_dir}' is added to bundle_args."
@@ -47,30 +41,25 @@ module BundleCache
       end
 
 
-      parts_pattern = File.expand_path(File.join(processing_dir, "#{file_name}.*"))
-      parts = Dir.glob(parts_pattern).sort
-
-      s3 = AWS::S3.new
-      bucket = s3.buckets[bucket_name]
+      s3 = S3::Service.new({
+        :access_key_id => ENV["AWS_S3_KEY"],
+        :secret_access_key => ENV["AWS_S3_SECRET"],
+        :region => ENV["AWS_S3_REGION"] || "us-east-1"
+      })
+      bucket = s3.buckets.find(bucket_name)
 
       puts "=> Uploading the bundle"
-      gem_archive = bucket.objects[file_name]
-
-      puts "  => Uploading #{parts.length} parts"
-      gem_archive.multipart_upload(:acl => acl_to_use) do |upload|
-        parts.each_with_index do |part, index|
-          puts "    => Uploading #{part}"
-          File.open part do |part_file|
-            upload.add_part(part_file)
-            puts "      => Uploaded"
-          end
-        end
-      end
-      puts "  => Completed multipart upload"
+      gem_archive = bucket.objects.build(file_name)
+      gem_archive.content = File.read(file_path)
+      gem_archive.acl = acl_to_use
+      gem_archive.save
 
       puts "=> Uploading the digest file"
-      hash_object = bucket.objects[digest_filename]
-      hash_object.write(bundle_digest, :acl => acl_to_use, :content_type => "text/plain")
+      hash_object = bucket.objects.build(digest_filename)
+      hash_object.content = bundle_digest
+      hash_object.acl = acl_to_use
+      hash_object.content_type = "text/plain"
+      hash_object.save
     end
 
     puts "All done now."

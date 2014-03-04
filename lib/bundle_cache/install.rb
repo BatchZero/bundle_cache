@@ -1,5 +1,5 @@
 require "digest"
-require "aws-sdk"
+require "s3"
 
 module BundleCache
   def self.install
@@ -10,22 +10,19 @@ module BundleCache
     bundle_dir = ENV["BUNDLE_DIR"] || "~/.bundle"
     processing_dir = ENV['PROCESS_DIR'] || ENV['HOME']
 
-    AWS.config({
+    s3 = S3::Service.new({
       :access_key_id => ENV["AWS_S3_KEY"],
       :secret_access_key => ENV["AWS_S3_SECRET"],
       :region => ENV["AWS_S3_REGION"] || "us-east-1"
     })
-    s3 = AWS::S3.new
-    bucket = s3.buckets[bucket_name]
+    bucket = s3.buckets.find(bucket_name)
 
-    gem_archive = bucket.objects[file_name]
-    hash_object = bucket.objects[digest_filename]
+    gem_archive = bucket.objects.find(file_name)
+    hash_object = bucket.objects.find(digest_filename)
 
     puts "=> Downloading the bundle"
     File.open("#{processing_dir}/remote_#{file_name}", 'wb') do |file|
-      gem_archive.read do |chunk|
-        file.write(chunk)
-      end
+      file.write(gem_archive.content(true))
     end
     puts "  => Completed bundle download"
 
@@ -34,14 +31,12 @@ module BundleCache
 
     puts "=> Downloading the digest file"
     File.open("#{processing_dir}/remote_#{file_name}.sha2", 'wb') do |file|
-      hash_object.read do |chunk|
-        file.write(chunk)
-      end
+      file.write(hash_object.content(true))
     end
     puts "  => Completed digest download"
 
     puts "=> All done!"
-  rescue AWS::S3::Errors::NoSuchKey
+  rescue S3::Error::NoSuchKey
     puts "There's no such archive!"
   end
 
